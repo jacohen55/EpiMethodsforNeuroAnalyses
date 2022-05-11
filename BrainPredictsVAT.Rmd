@@ -101,7 +101,7 @@ brain %>% filter(sid == 10| sid == 100|sid == 1000|sid == 10000)
 # gdrive <- "~/Google Drive/EBB Lab Folder/" # Laptop 
 
 # Pulling in VAT and covariate data sent over by Rundle 
-Rundle <- read_excel("P50_reduced_Data_N300_MI_data_03102022_NoImpute.xlsx") %>% 
+Rundle <- read_excel(str_c(gdrive,"Jacob/Obesity_Project/data_code/","P50_reduced_Data_N300_MI_data_03102022_NoImpute.xlsx")) %>% 
             dplyr::select(-Imputation_)
 
 nrow(Rundle) #300
@@ -220,7 +220,8 @@ P50$subID <- str_c("sub-",P50$ID)
 ## Pulling in Rundle's imputations
 ```{r}
 # Pulling in Rundles imputation 
-P50_imputs_Rundle25 <- read.csv("P50_reduced_Data_N300_MI_data_03102022.csv")  %>% 
+
+P50_imputs_Rundle25 <- read.csv(str_c(gdrive,"Jacob/Obesity_Project/data_code/","P50_reduced_Data_N300_MI_data_03102022.csv")) %>% 
                         as.mids(.imp = 1) # Pulling in Rundle's impute data sets and making mids object for use with MICE package
 ```
 
@@ -278,12 +279,12 @@ P50_missingPlots <- P50_fullMRI[2:22] %>%
 
 md.pattern(P50_fullMRI[2:22], plot = TRUE, rotate.names = TRUE) # Tells us how many full case analyses we have, and across which variables we have the most complete case of data 
 
-aggr_plot <- aggr(P50_missingPlots,
-                  bars = TRUE, 
-                  numbers=TRUE, 
-                  sortVars=TRUE,
-                  cex.axis = 0.6,
-                  ylab=c("Histogram of missing data","Missingness Pattern"))
+# aggr_plot <- aggr(P50_missingPlots,
+#                   bars = TRUE, 
+#                   numbers=TRUE, 
+#                   sortVars=TRUE,
+#                   cex.axis = 0.6,
+#                   ylab=c("Histogram of missing data","Missingness Pattern"))
 # about 65% of the samples are missing no data, 15% missing just SES data
 
 # marginplot(P50[c(1,2)]) # use this to look at distribution of one variable when the other is missing and vice, versa 
@@ -800,7 +801,7 @@ braindf$ELS60 <- as.numeric(braindf$ELS60); braindf$logPAH <- as.numeric(braindf
 tmpdf1v <- drop_na(braindf[,c("subID","VAT","age_mri_yr", "GENDER")])
 nrow(tmpdf1v)
 
-r.1v.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + age_mri_yr + GENDER,
+l.1v.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + age_mri_yr + GENDER,
                     data = tmpdf1v,
                     id = "subID",
                     hemi = "lh",
@@ -810,7 +811,7 @@ r.1v.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + age_mri_yr + GENDER
                     fwhm = 10,
                     dir_subj = SUBJECTS_DIR ,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T)
 
-l.1v.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + age_mri_yr + GENDER,
+r.1v.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + age_mri_yr + GENDER,
                     data = tmpdf1v,
                     id = "subID",
                     hemi = "rh",
@@ -823,7 +824,7 @@ l.1v.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + age_mri_yr + GENDER
 tmpdf2v.w <- drop_na(braindf[,c("subID","VAT","ipw", "age_mri_yr", "GENDER")])
 nrow(tmpdf2v.w) #237
 
-r.2v.w.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + age_mri_yr + GENDER,
+l.2v.w.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + age_mri_yr + GENDER,
                     data = tmpdf2v.w,
                     weights = tmpdf2v.w$ipw,
                     id = "subID",
@@ -834,7 +835,7 @@ r.2v.w.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + age_mri_yr + GEND
                     fwhm = 10,
                     dir_subj = SUBJECTS_DIR ,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T)
 
-l.2v.w.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + age_mri_yr + GENDER,
+r.2v.w.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + age_mri_yr + GENDER,
                     data = tmpdf2v.w,
                     weights = tmpdf2v.w$ipw,
                     id = "subID",
@@ -853,7 +854,7 @@ tmpdf20v <- drop_na(braindf[,c("subID","VAT", "p50_ethnicity", "p50_cohabitate",
 
 nrow(tmpdf20v) #178
 
-r.20v.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH +
+l.20v.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH +
                                                                   SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 +
                                                                   A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER,
                     data = tmpdf20v,
@@ -865,7 +866,7 @@ r.20v.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity + p5
                     fwhm = 10,
                     dir_subj = SUBJECTS_DIR ,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T)
 
-l.20v.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH +
+r.20v.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH +
                                                                   SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 +
                                                                   A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER,
                     data = tmpdf20v,
@@ -885,7 +886,7 @@ tmpdf20v.w <- drop_na(braindf[,c("subID","VAT", "p50_ethnicity", "p50_cohabitate
 
 nrow(tmpdf20v.w) #166
 
-r.20v.w.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH +
+l.20v.w.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH +
                                                                   SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 +
                                                                   A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER,
                     data = tmpdf20v.w,
@@ -898,7 +899,7 @@ r.20v.w.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity + 
                     fwhm = 10,
                     dir_subj = SUBJECTS_DIR ,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T)
 
-l.20v.w.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH +
+r.20v.w.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH +
                                                                   SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 +
                                                                   A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER,
                     data = tmpdf20v.w,
@@ -918,7 +919,7 @@ P50_imputs %>% complete(action = 1) %>% nrow() #300
 tmpdf20v.mids <- P50_imputs %>% mice::filter(subID %in% braindf$subID)
 tmpdf20v.mids %>% complete(action = 1) %>% nrow() #286
 
-r.20v.mids.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH +
+l.20v.mids.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH +
                                                                   SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 +
                                                                   A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER,
                     data = tmpdf20v.mids,
@@ -930,7 +931,7 @@ r.20v.mids.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity
                     fwhm = 10,
                     dir_subj = SUBJECTS_DIR ,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T)
 
-l.20v.mids.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH +
+r.20v.mids.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH +
                                                                   SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 +
                                                                   A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER,
                     data = tmpdf20v.mids,
