@@ -1,0 +1,951 @@
+---
+title: 'SES and the association between VAT and CT'
+author: "Jacob Cohen"
+date: "4/12/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include = FALSE}
+library(dplyr)
+library(devtools)
+# library(ggplot2)
+library(mice)
+library(readxl)
+library(VIM)
+library(haven)
+library(broom)
+library(modelsummary)
+library(Rcpp)
+library("magick")
+library(VIM)
+library("QDECR")
+library(stringr)
+library(tidyr)
+library(arsenal)
+library(scipub)
+library(ggplot2)
+library(ggmice)
+```
+
+## Setting Drive Location here 
+```{r}
+## Leave the one uncommented that you are using! 
+gdrive <- "/Volumes/GoogleDrive/My Drive/EBB Lab Folder/" #minimac
+#gdrive <- "~/Google Drive/EBB Lab Folder/" #Laptop 
+```
+
+
+## Loading in P50 data for cortical thickness and brain volumes 
+```{r, include = FALSE, echo = FALSE}
+volsB <- read.table(str_c(gdrive,"MN Analyses/P50 MRI/FS7_segmentation/aseg_stats.txt"), header = TRUE)   %>% mutate(Measure.volume = as.numeric(substring(Measure.volume, 5))-1000) %>%
+          rename("SID" = Measure.volume)
+
+volsDP <- read.table("/Volumes/BEHAVEBB/Amy/margolisp50/aseg_stats.txt", header = TRUE)  %>% mutate(Measure.volume = as.numeric(substring(Measure.volume, 5))-1000) %>%
+          rename("SID" = Measure.volume)
+
+r.thickB <- read.table(str_c(gdrive,"MN Analyses/P50 MRI/FS7_segmentation/aparc_rh_a2009s_thickness.txt"), header = TRUE) %>%
+          mutate(rh.aparc.a2009s.thickness = as.numeric(substring(rh.aparc.a2009s.thickness, 5))-1000) %>%
+          rename("SID" = rh.aparc.a2009s.thickness)
+
+r.thickDP <- read.table("/Volumes/BEHAVEBB/Amy/margolisp50/aparc_rh_a2009s_thickness.txt", header = TRUE)  %>%
+          mutate(rh.aparc.a2009s.thickness = as.numeric(substring(rh.aparc.a2009s.thickness, 5))-1000) %>%
+          rename("SID" = rh.aparc.a2009s.thickness)
+
+l.thickB <- read.table(str_c(gdrive,"MN Analyses/P50 MRI/FS7_segmentation/aparc_lh_a2009s_thickness.txt"), header = TRUE) %>%
+          mutate(lh.aparc.a2009s.thickness = as.numeric(substring(lh.aparc.a2009s.thickness, 5))-1000) %>%
+          rename("SID" = lh.aparc.a2009s.thickness)
+
+l.thickDP <- read.table("/Volumes/BEHAVEBB/Amy/margolisp50/aparc_lh_a2009s_thickness.txt", header = TRUE) %>%
+          mutate(lh.aparc.a2009s.thickness = as.numeric(substring(lh.aparc.a2009s.thickness, 5))-1000) %>%
+          rename("SID" = lh.aparc.a2009s.thickness)
+
+# glimpse(vols)
+# glimpse(r.thick)
+
+# There are 2 potential sources for freesurfer data. Check which is correct. Server has one more row and SIDs seem to be offset - run below code to see. 
+summary(comparedf(r.thickB, r.thickDP))
+
+full_join(r.thickB, r.thickDP, by = "SID") %>%
+    select(SID, rh_G_and_S_frontomargin_thickness.x, 
+                rh_G_and_S_frontomargin_thickness.y ) %>% 
+    mutate(check = ifelse(rh_G_and_S_frontomargin_thickness.x != rh_G_and_S_frontomargin_thickness.y | 
+                            is.na(rh_G_and_S_frontomargin_thickness.x) | 
+                            is.na(rh_G_and_S_frontomargin_thickness.y), 1, 0)) %>% 
+    filter(check == 1 )
+
+# joining
+
+brain <- full_join(l.thickDP, r.thickDP, by = "SID") %>% 
+          full_join(volsDP, by = "SID") %>% unique() %>%  
+          mutate(sid = ifelse(nchar(as.character(SID)) >= 5, SID-9000, SID))  %>% 
+          dplyr::select(-SID)
+
+nrow(volsDP) # 287
+nrow(l.thickDP) # 287
+nrow(r.thickDP) # 287
+nrow(brain) # 287
+
+brain_names <- colnames(brain) # We need this to later subset out from imputation prediction matrix
+length(brain_names)
+
+brain %>% filter(sid == 10| sid == 100|sid == 1000|sid == 10000)
+```
+
+## Pulling in Anthro and phenotypic data from Rundle
+```{r}
+#gdrive <- "/Volumes/GoogleDrive/My Drive/EBB Lab Folder/" # Desktop
+# gdrive <- "~/Google Drive/EBB Lab Folder/" # Laptop 
+
+# Pulling in VAT and covariate data sent over by Rundle 
+Rundle <- read_excel("P50_reduced_Data_N300_MI_data_03102022_NoImpute.xlsx") %>% 
+            dplyr::select(-Imputation_)
+
+nrow(Rundle) #300
+
+# Making all no-reponse items the logical NA
+Rundle[Rundle == -9] <- NA 
+
+# CKLIST16 - maybe can be used for imputation??
+CKLIST16 <- read_sav(str_c(gdrive,"MN_DATA /CKLIST16.sav")) %>% 
+                  rename(sid = SID) %>% 
+                    select(sid, FORMD08, FORMD09, FORMR08, FORMR09) %>% 
+                    mutate(FORMD08D = ifelse(is.na(FORMD08), 0, 1), 
+                           FORMD09D = ifelse(is.na(FORMD09), 0 , 1))
+
+CKLIST16_names <- colnames(CKLIST16)
+
+
+# Joining Rundel's data, with brains, and include/exclude data 
+P50 <- Rundle %>% full_join(brain, by = "sid")  %>% unique() 
+
+# Checking no duplicate sid entries
+P50 %>% group_by(sid) %>% dplyr::summarize(count = n()) %>% filter(count > 1) # no duplicate IDs
+
+# Looking at where we have VAT, thickness and both and how that lines up with tracker 
+P50 <- P50 %>% mutate(VAT_check = ifelse(is.na(VAT), 0, 1), 
+                      Thick_check = as.factor(ifelse(is.na(rh_S_oc.temp_lat_thickness), 0, 1)))
+
+P50 %>% group_by(VAT_check, Thick_check) %>% dplyr::summarize(n())
+
+nrow(P50)
+# SID list of participants with 
+P50 %>% filter(VAT_check == 1 & Thick_check == 0)
+P50 %>% filter(VAT_check == 0 & Thick_check == 1) # some of these are NA for SCAN but they should be "YES"? Unless something else is going on? 
+```
+
+## Adding data for IPW steps 
+```{r}
+P50 <- P50 %>% full_join(CKLIST16, by = "sid") %>% unique()
+
+P50 %>% group_by(VAT_check, Thick_check,  FORMD08D, FORMD09D) %>% dplyr::summarize(n()) 
+ 
+P50 %>% group_by(FORMD08D, FORMD09D) %>% dplyr::summarize(n()) 
+
+# Anthropomorphic measurements 
+ANTHRO_FINAL <- read_sav(str_c(gdrive,"MN_DATA /ANTHRO_FINAL.sav")) %>% 
+                  rename(sid = SID) %>% 
+                    select(sid, BMI11, BMIZ11, WEIGHT11, HEIGHT11) 
+
+ANTHRO_FINAL %>% group_by(sid) %>% 
+                  summarize(count = n()) %>% 
+                    filter(count > 1) # checking for duplicate SIDs
+
+nrow(ANTHRO_FINAL) #559 
+
+ANTHRO_names <- colnames(ANTHRO_FINAL)
+
+# Birth Chart data 
+bchart <- read.csv(str_c(gdrive,"Jaime/raw_data/CCCEH_Data/BCHART.csv")) %>% 
+            rename(sid = SID) %>% 
+            select(sid, B06, B09, B10, B11) 
+
+bchart %>% group_by(sid) %>% 
+                  summarize(count = n()) %>% 
+                    filter(count > 1) # checking for duplicate SIDs
+
+nrow(bchart) # 710
+
+bchart_names <- colnames(bchart)
+
+## PRENATAL VAR FOR ETHNICITY 
+prenat<- read_sav(str_c(gdrive,"MN_DATA /PRENATAL.sav")) %>% 
+                  rename(sid = SID) %>% 
+                    select(sid, A20_0, A21_0, A22_0)
+
+prenat[prenat == 88 | prenat == 99] <- NA
+
+nrow(prenat) #845
+
+prenat_names <- colnames(prenat)
+
+
+# Body Comp Data - 
+# Bchart <- read_sav(str_c(gdrive,"MN_DATA /BODYCOMP.sav")) %>% 
+#             rename(sid = SID) %>% 
+#             select(sid, BCDATE, INTERVAL, BCHT_C, BCWTLBC, BCWTKGC, BCHC_C)
+
+# Inattention 
+# CPT <-  read_sav(str_c(gdrive,"MN_DATA /CPT.sav")) %>% 
+#             rename(sid = SID) 
+
+## Conners
+# CONN <-  read_sav(str_c(gdrive,"MN_DATA /CONNERS.sav")) %>% 
+#             rename(sid = SID) %>%
+#             select(sid, MONTHS, PCH_T) %>%
+          
+## Gender 
+xy <- read_sav(str_c(gdrive,"MN_DATA /GENDER.sav")) %>% 
+            rename(sid = SID)
+
+xy_names <- colnames(xy)
+nrow(xy)
+
+P50 <- P50 %>% full_join(xy, by = "sid") %>% 
+        full_join(bchart, by = "sid") %>%
+          full_join(ANTHRO_FINAL, by = "sid") %>% 
+            full_join(prenat, by = "sid") %>% 
+               mutate(VAT_check = ifelse(is.na(VAT), 0, 1), 
+                      Thick_check = as.factor(ifelse(is.na(rh_S_oc.temp_lat_thickness), 0, 1))) #recalculating these bc more rows were added
+
+
+# Necessary for later vertex wide pairing 
+P50$ID <- ifelse(P50$sid<1000,P50$sid+1000, P50$sid+10000)
+P50$subID <- str_c("sub-",P50$ID) 
+```
+
+## Pulling in Rundle's imputations
+```{r}
+# Pulling in Rundles imputation 
+P50_imputs_Rundle25 <- read.csv("P50_reduced_Data_N300_MI_data_03102022.csv")  %>% 
+                        as.mids(.imp = 1) # Pulling in Rundle's impute data sets and making mids object for use with MICE package
+```
+
+
+## Adding in potential inclusion predictors 
+```{r}
+
+nrow(P50)
+```
+
+```{r}
+P50_fullMRI <- P50 %>% filter(!is.na(VAT), 
+                              !is.na(lh_G_and_S_frontomargin_thickness))
+
+
+nrow(P50_fullMRI)
+```
+
+
+## How much of each variable is missing? How much data is each participant missing?
+```{r}
+pMiss <- function(x){sum(is.na(x)/length(x)*100)} # This function calculates percent missing for each variable 
+
+apply(X = P50_fullMRI, 2, FUN = pMiss) # Percent missingness for each variable 
+
+# Caclulating % missingness per participant
+# P50 %>% mutate(missing = apply(X = P50, 1, FUN = pMiss)) %>% dplyr::select(sid, missing, everything()) %>% arrange(desc(missing)) %>% head(10)
+```
+
+## Missingness Plots
+```{r}
+colnames(P50_fullMRI)
+
+P50_missingPlots <- P50_fullMRI[2:22] %>% 
+                        rename(ethnicity = p50_ethnicity, 
+                               marital_status = p50_cohabitate, 
+                               parent_education = p50_education, 
+                               SR_Health = p50_Poor_SRH, 
+                               SES_Community = SES12, 
+                               SES_US = SES13, 
+                               Housing_Situation = p50_Housing, 
+                               Food_Insecure = tfi_score, 
+                               Food = A11Y11, 
+                               Housing = A12Y11, 
+                               Gas_Electric = A13Y11, 
+                               Clothing = A14Y11, 
+                               Medica_tx = A15Y11, 
+                               Public_Assistance = A17Y11, 
+                               Birth_Weight = BirthWt, 
+                               Ab_Muscle = BMUSCLE, 
+                               SubCut_AdTissue = BSAT, 
+                               Muscle_AdTissue = BIMA,  
+                               Age_at_Scan = age_mri_yr, 
+                               CT = lh_G_and_S_frontomargin_thickness)
+
+md.pattern(P50_fullMRI[2:22], plot = TRUE, rotate.names = TRUE) # Tells us how many full case analyses we have, and across which variables we have the most complete case of data 
+
+aggr_plot <- aggr(P50_missingPlots,
+                  bars = TRUE, 
+                  numbers=TRUE, 
+                  sortVars=TRUE,
+                  cex.axis = 0.6,
+                  ylab=c("Histogram of missing data","Missingness Pattern"))
+# about 65% of the samples are missing no data, 15% missing just SES data
+
+# marginplot(P50[c(1,2)]) # use this to look at distribution of one variable when the other is missing and vice, versa 
+```
+
+## Imputing the data - creating 25 imputed sets to mirror Rundle's analyses
+```{r}
+# CREATING VECTOR OF VARIABLES TO EXCLUDE FROM IMPUTATION AND PREDICTION
+# Need to modify this becayse gender should actually be included 
+noImput <- c(ANTHRO_names, brain_names, bchart_names, prenat_names, xy_names, CKLIST16_names)
+
+brain_namesnoPred <- brain_names[! brain_names %in% c("rh_MeanThickness_thickness", "lh_MeanThickness_thickness")] #adding mean thickness back in for predictions 
+
+noPred <- c(ANTHRO_names, brain_namesnoPred, bchart_names, prenat_names, xy_names, CKLIST16_names)
+
+P50_imput_data <- P50 %>% filter(!is.na(VAT)) #%>% dplyr::select(sid:age_mri_yr)
+
+nrow(P50_imput_data) # This gets us back to the original 300 Rundle sent over 
+
+# The below function can be used to choose variables involved in each prediction of each varaible's NAs, does this by first looking for correlations
+# quickpred(P50, mincor=0.1, minpuc=0, include="", exclude="", 
+#       method="pearson")
+
+## names of variables with missingness 
+missVars <- names(P50_imput_data)[colSums(is.na(P50_imput_data)) > 0]
+missVars
+
+## CREATING A PREDINCTION MATRIX FOR IMPUTATION
+# get_predMat <- mice(P50_imput_data,m=1,maxit=0,meth='pmm') # running just to get a prediction matrix that we can modify
+# predMat <- get_predMat$predictorMatrix 
+predMat <- make.predictorMatrix(P50_imput_data)
+predMat[,'sid'] <- 0 # Setting all id column values to zero to exclude it as a predictor in real imputation step
+predMat[,noPred] <- 0
+
+# impmethod <- get_predMat$method
+# impmethod[noImput] <- ""
+
+## CREATING A METHODS VECTOR FOR IMPUTATIOM
+impmethod <- make.method(P50_imput_data)
+impmethod[noImput] <- ""
+
+P50_imput_data %>% filter(is.na(rh_MeanThickness_thickness))
+
+P50_imputs <- mice(P50_imput_data,
+                   m=25,
+                   maxit=0,
+                   meth=impmethod, 
+                   predMat) # this function crashes unless maxit is set to 0 - need to figure this out! 
+# also need to select specific variables to be involved in the imputation, we don't want SID included in predictor matrix!!!
+# other methods available - pmm is Predictive Mean Matching 
+
+View(P50_imputs$predictorMatrix)
+View(P50_imputs$method)
+summary(P50_imputs)
+P50_imputs$loggedEvents
+
+```
+
+```{r, include=FALSE}
+P50_imputs$meth
+P50_imputsN25 <- complete(P50_imputs, action = "long")
+```
+
+
+## How does the distribution of imputed data sets vary from the original with missing data?
+```{r}
+P50_imputs$imp
+# densityplot(P50_imputs) # Cant figure out why this isnt working?!
+densityplot(P50_imputs_Rundle25)
+# densityplot(P50_imputs_Rundle25)
+# stripplot(P50_imputs, pch = 20, cex = 1.2)
+```
+
+## saving the imputed data sets 
+```{r}
+saveRDS(P50_imputs, file = "P50_imputs_m25.rds")
+# test <- readRDS(file = "P50_imputs_m5.rds")
+```
+
+
+
+## What predicts missingness? - This will be the part where we do IPW - Right now just trying to figure out where we can find attrition data
+
+```{r}
+#class(P50$VAT_check)
+
+aggr_plot <- aggr(P50[238:262], col=c('navyblue','red'), numbers=TRUE, sortVars=TRUE, labels=names(P50_fullMRI[238:262]), cex.axis=.7, gap=3, ylab=c("Histogram of missing data","Pattern"))
+
+colnames(P50)
+
+glm.fit <- glm(data = P50, VAT_check ~ WEIGHT11 +
+                                        HEIGHT11 +
+                                        BMIZ11 +
+                                        # A20_0 + # Mothers ethnicity
+                                        # A22_0 + #Bio Father ethnicity 
+                                         GENDER + 
+                                         B09  #gestational age
+                                        # B10 + #birth length 
+                                        # B11 #bith weight 
+                 , family = binomial(link = 'logit'))
+summary(glm.fit)
+nrow(model.frame(glm.fit)) #351
+
+# This will allow you to see the propensity scores by VAT data status 
+# prs_df <- data.frame(pr_score = predict(m_ps, type = "response"),
+#                      catholic = m_ps$model$catholic)
+# 
+# labs <- paste("Actual school type attended:", c("Catholic", "Public"))
+# prs_df %>%
+#   mutate(catholic = ifelse(catholic == 1, labs[1], labs[2])) %>%
+#   ggplot(aes(x = pr_score)) +
+#   geom_histogram(color = "white") +
+#   facet_wrap(~catholic) +
+#   xlab("Probability of going to Catholic school") +
+#   theme_bw()
+
+P50 <- augment_columns(glm.fit, newdata = P50, type.predict = "response") %>% 
+                rename(propensity = .fitted) %>% 
+                mutate(ipw = VAT_check/propensity +  (1-VAT_check)/(1-propensity)) %>% 
+                select(sid, VAT_check, propensity, ipw, everything()) 
+
+
+ggplot(P50) + geom_density(aes(propensity, color = as.factor(VAT_check), fill = as.factor(VAT_check)), alpha = 0.75) 
+
+ggplot(P50 %>% filter(!is.na(VAT), !is.na(rh_G_oc.temp_med.Parahip_thickness))) + geom_density(aes(ipw), alpha = 0.75) 
+ggplot(P50) + geom_density(aes(ipw, color = as.factor(VAT_check), fill = as.factor(VAT_check)), alpha = 0.75) 
+```
+
+## Run a model and pool the results. 
+```{r}
+# Interested in: 
+#
+# rh_G_oc.temp_med.Parahip_thickness = includes entorhinal and parahippocampal (no smaller parcellation)
+# lh_G_oc.temp_med.Parahip_thickness
+# 
+# rh_G_front_inf.Opercular_thickness = Opercular part of the inferior frontal gyrus
+# lh_G_front_inf.Opercular_thickness
+# 
+# rh_G_front_inf.Orbital_thickness = Orbital part of the inferior frontal gyrus
+# lh_G_front_inf.Orbital_thickness
+# 
+# rh_G_front_inf.Triangul_thickness = Triangular part of the inferior frontal gyrus
+# lh_G_front_inf.Triangul_thickness
+
+# Right entorhinal cortex 
+glimpse(P50)
+range(P50$age_mri_yr, na.rm = TRUE)
+
+model1 <- lm(data = P50, rh_G_oc.temp_med.Parahip_thickness ~ VAT + age_mri_yr + GENDER)
+
+model2 <- lm(data = P50, 
+             weights = ipw, 
+             rh_G_oc.temp_med.Parahip_thickness ~ VAT + age_mri_yr + GENDER)
+
+
+model3 <- lm(data = P50, rh_G_oc.temp_med.Parahip_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH + 
+                                                                  SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 + 
+                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER)
+
+model4 <- lm(data = P50, 
+             weights = ipw, 
+             rh_G_oc.temp_med.Parahip_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH + 
+                                                                  SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 + 
+                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER)
+
+model5 <- with(P50_imputs, lm(rh_G_oc.temp_med.Parahip_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH + 
+                                                                  SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 + 
+                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER))
+
+# This incorporates weights with the imputed data sets. wont work until you place IPW step before imputation
+# model6 <- with(data = P50_imputs, 
+             # weights = ipw, 
+             # rh_G_oc.temp_med.Parahip_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH + 
+             #                                                      SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 + 
+             #                                                      A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER)
+
+model5pooled <- pool(model5)
+# model6pooled <- pool(model6)
+summary(model5pooled)
+model5pooled$m
+model5pooled$call
+model5pooled$glanced
+
+modelsummary(list(model1, model2, model3, model4), statistic = 'p.value')
+summary(model1)
+```
+
+```{r}
+# Left entorhinal cortex 
+glimpse(P50)
+range(P50$age_mri_yr, na.rm = TRUE)
+
+model1 <- lm(data = P50, lh_G_oc.temp_med.Parahip_thickness ~ VAT + age_mri_yr + GENDER)
+
+model2 <- lm(data = P50, 
+             weights = ipw, 
+             lh_G_oc.temp_med.Parahip_thickness ~ VAT + age_mri_yr + GENDER)
+
+
+model3 <- lm(data = P50, lh_G_oc.temp_med.Parahip_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH + 
+                                                                  SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 + 
+                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER)
+
+model4 <- lm(data = P50, 
+             weights = ipw, 
+             lh_G_oc.temp_med.Parahip_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH + 
+                                                                  SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 + 
+                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER)
+
+model5 <- with(P50_imputs, lm(lh_G_oc.temp_med.Parahip_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH + 
+                                                                  SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 + 
+                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER))
+
+# This incorporates weights with the imputed data sets. wont work until you place IPW step before imputation
+# model6 <- with(data = P50_imputs, 
+             # weights = ipw, 
+             # rh_G_oc.temp_med.Parahip_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH + 
+             #                                                      SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 + 
+             #                                                      A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER)
+
+model5pooled <- pool(model5)
+# model6pooled <- pool(model6)
+summary(model5pooled)
+model5pooled$m
+model5pooled$call
+model5pooled$glanced
+summary(model1)
+modelsummary(list(model1, model2, model3, model4), statistic = 'p.value')
+```
+
+```{r}
+# Right opercular part of the inferior frontal gyrus
+
+model1 <- lm(data = P50, rh_G_front_inf.Opercular_thickness ~ VAT + age_mri_yr + GENDER)
+
+model2 <- lm(data = P50, 
+             weights = ipw, 
+             rh_G_front_inf.Opercular_thickness ~ VAT + age_mri_yr + GENDER)
+
+
+model3 <- lm(data = P50, rh_G_front_inf.Opercular_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH + 
+                                                                  SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 + 
+                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER)
+
+model4 <- lm(data = P50, 
+             weights = ipw, 
+             rh_G_front_inf.Opercular_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH + 
+                                                                  SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 + 
+                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER)
+
+model5 <- with(P50_imputs, lm(rh_G_front_inf.Opercular_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH + 
+                                                                  SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 + 
+                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER))
+
+# This incorporates weights with the imputed data sets. wont work until you place IPW step before imputation
+# model6 <- with(data = P50_imputs, 
+             # weights = ipw, 
+             # rh_G_front_inf.Opercular_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH + 
+             #                                                      SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 + 
+             #                                                      A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER)
+
+model5pooled <- pool(model5)
+# model6pooled <- pool(model6)
+summary(model5pooled)
+model5pooled$m
+model5pooled$call
+model5pooled$glanced
+summary(model1)
+modelsummary(list(model1, model2, model3, model4), statistic = 'p.value')
+###
+
+```
+
+```{r}
+# Left opercular part of the inferior frontal gyrus
+model1 <- lm(data = P50, lh_G_front_inf.Opercular_thickness ~ VAT + age_mri_yr + GENDER)
+
+model2 <- lm(data = P50, 
+             weights = ipw, 
+             lh_G_front_inf.Opercular_thickness ~ VAT + age_mri_yr + GENDER)
+
+
+model3 <- lm(data = P50, lh_G_front_inf.Opercular_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH + 
+                                                                  SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 + 
+                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER)
+
+model4 <- lm(data = P50, 
+             weights = ipw, 
+             lh_G_front_inf.Opercular_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH + 
+                                                                  SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 + 
+                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER)
+
+model5 <- with(P50_imputs, lm(lh_G_front_inf.Opercular_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH + 
+                                                                  SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 + 
+                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER))
+
+# This incorporates weights with the imputed data sets. wont work until you place IPW step before imputation
+# model6 <- with(data = P50_imputs, 
+             # weights = ipw, 
+             # lh_G_front_inf.Opercular_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH + 
+             #                                                      SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 + 
+             #                                                      A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER)
+
+model5pooled <- pool(model5)
+# model6pooled <- pool(model6)
+summary(model5pooled)
+model5pooled$m
+model5pooled$call
+model5pooled$glanced
+summary(model1)
+modelsummary(list(model1, model2, model3, model4), statistic = 'p.value')
+###
+```
+
+
+```{r}
+# Right Orbital part of the inferior frontal gyrus
+model1 <- lm(data = P50, rh_G_front_inf.Orbital_thickness ~ VAT + age_mri_yr + GENDER)
+
+model2 <- lm(data = P50, 
+             weights = ipw, 
+             rh_G_front_inf.Orbital_thickness ~ VAT + age_mri_yr + GENDER)
+
+
+model3 <- lm(data = P50, rh_G_front_inf.Orbital_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH + 
+                                                                  SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 + 
+                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER)
+
+model4 <- lm(data = P50, 
+             weights = ipw, 
+             rh_G_front_inf.Orbital_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH + 
+                                                                  SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 + 
+                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER)
+
+model5 <- with(P50_imputs, lm(rh_G_front_inf.Orbital_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH + 
+                                                                  SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 + 
+                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER))
+
+# This incorporates weights with the imputed data sets. wont work until you place IPW step before imputation
+# model6 <- with(data = P50_imputs, 
+             # weights = ipw, 
+             # rh_G_front_inf.Orbital_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH + 
+             #                                                      SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 + 
+             #                                                      A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER)
+
+model5pooled <- pool(model5)
+# model6pooled <- pool(model6)
+summary(model5pooled)
+model5pooled$m
+model5pooled$call
+model5pooled$glanced
+summary(model1)
+modelsummary(list(model1, model2, model3, model4), statistic = 'p.value')
+###
+```
+
+
+```{r}
+# Left Orbital part of the inferior frontal gyrus
+model1 <- lm(data = P50, lh_G_front_inf.Orbital_thickness ~ VAT + age_mri_yr + GENDER)
+
+model2 <- lm(data = P50, 
+             weights = ipw, 
+             lh_G_front_inf.Orbital_thickness ~ VAT + age_mri_yr + GENDER)
+
+
+model3 <- lm(data = P50, lh_G_front_inf.Orbital_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH + 
+                                                                  SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 + 
+                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER)
+
+model4 <- lm(data = P50, 
+             weights = ipw, 
+             lh_G_front_inf.Orbital_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH + 
+                                                                  SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 + 
+                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER)
+
+model5 <- with(P50_imputs, lm(lh_G_front_inf.Orbital_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH + 
+                                                                  SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 + 
+                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER))
+
+# This incorporates weights with the imputed data sets. wont work until you place IPW step before imputation
+# model6 <- with(data = P50_imputs, 
+             # weights = ipw, 
+             # lh_G_front_inf.Orbital_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH + 
+             #                                                      SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 + 
+             #                                                      A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER)
+
+model5pooled <- pool(model5)
+# model6pooled <- pool(model6)
+summary(model5pooled)
+model5pooled$m
+model5pooled$call
+model5pooled$glanced
+summary(model1)
+modelsummary(list(model1, model2, model3, model4), statistic = 'p.value')
+###
+```
+
+```{r}
+# Right Triangular part of the inferior frontal gyrus
+
+model1 <- lm(data = P50, rh_G_front_inf.Triangul_thickness ~ VAT + age_mri_yr + GENDER)
+
+model2 <- lm(data = P50, 
+             weights = ipw, 
+             rh_G_front_inf.Triangul_thickness ~ VAT + age_mri_yr + GENDER)
+
+
+model3 <- lm(data = P50, rh_G_front_inf.Triangul_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH + 
+                                                                  SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 + 
+                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER)
+
+model4 <- lm(data = P50, 
+             weights = ipw, 
+             rh_G_front_inf.Triangul_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH + 
+                                                                  SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 + 
+                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER)
+
+model5 <- with(P50_imputs, lm(rh_G_front_inf.Triangul_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH + 
+                                                                  SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 + 
+                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER))
+
+# This incorporates weights with the imputed data sets. wont work until you place IPW step before imputation
+# model6 <- with(data = P50_imputs, 
+             # weights = ipw, 
+             # rh_G_front_inf.Triangul_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH + 
+             #                                                      SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 + 
+             #                                                      A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER)
+
+model5pooled <- pool(model5)
+# model6pooled <- pool(model6)
+summary(model5pooled)
+model5pooled$m
+model5pooled$call
+model5pooled$glanced
+summary(model1)
+modelsummary(list(model1, model2, model3, model4), statistic = 'p.value')
+###
+```
+
+```{r}
+# Left Triangular part of the inferior frontal gyrus
+
+model1 <- lm(data = P50, lh_G_front_inf.Triangul_thickness ~ VAT + age_mri_yr + GENDER)
+
+model2 <- lm(data = P50, 
+             weights = ipw, 
+             lh_G_front_inf.Triangul_thickness ~ VAT + age_mri_yr + GENDER)
+
+
+model3 <- lm(data = P50, lh_G_front_inf.Triangul_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH + 
+                                                                  SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 + 
+                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER)
+
+model4 <- lm(data = P50, 
+             weights = ipw, 
+             lh_G_front_inf.Triangul_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH + 
+                                                                  SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 + 
+                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER)
+
+model5 <- with(P50_imputs, lm(lh_G_front_inf.Triangul_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH + 
+                                                                  SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 + 
+                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER))
+
+# This incorporates weights with the imputed data sets. wont work until you place IPW step before imputation
+# model6 <- with(data = P50_imputs, 
+             # weights = ipw, 
+             # lh_G_front_inf.Triangul_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH + 
+             #                                                      SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 + 
+             #                                                      A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER)
+
+model5pooled <- pool(model5)
+# model6pooled <- pool(model6)
+summary(model5pooled)
+model5pooled$m
+model5pooled$call
+model5pooled$glanced
+summary(model1)
+modelsummary(list(model1, model2, model3, model4), statistic = 'p.value')
+###
+```
+
+## Need to check data and line up sample sizes 
+## Vertex Wise Analyses 
+```{r}
+## QDECR ----
+# https://www.frontiersin.org/articles/10.3389/fninf.2021.561689/full
+
+# Do I need to add in Intercranial Volume?? Only in volume analyses...
+
+FREESURFER_HOME <- "/Applications/freesurfer/7.2.0/"
+SUBJECTS_DIR <- "/Volumes/BEHAVEBB/Amy/margolisp50/derivatives/freesurfer/" 
+analysisout <- "~/Desktop/QDECR/"
+  
+  #str_c(gdrive,"Jacob/Obesity_Project/QDECR2/")
+
+Sys.setenv(PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Applications/freesurfer/7.2.0:/Applications/freesurfer/7.2.0/bin", 
+           FREESURFER_HOME="/Applications/freesurfer/7.2.0", 
+           SUBJECTS_DIR="/Volumes/BEHAVEBB/Amy/margolisp50/derivatives/freesurfer/")
+  #str_c(gdrive,"Jacob/Obesity_Project/QDECR2/")
+
+Sys.setenv(PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Applications/freesurfer/7.2.0:/Applications/freesurfer/7.2.0/bin", 
+           FREESURFER_HOME="/Applications/freesurfer/7.2.0", 
+           SUBJECTS_DIR="/Volumes/BEHAVEBB/Amy/margolisp50/derivatives/freesurfer/")
+
+brainlist <- dir(SUBJECTS_DIR,pattern = "sub")
+braindf <- P50[P50$subID %in% brainlist,]
+braindf$file <- str_c(SUBJECTS_DIR,braindf$subID,"/surf/lh.thickness.fwhm10.fsaverage.mgh")
+braindf <- braindf[file.exists(braindf$file),]
+
+braindf[,c("ETS0","newgendr","ethnicityAA","season_winter","F48_60")] <- (braindf[,c("ETS0","newgendr","ethnicityAA","season_winter","F48_60")]* 1) -.5
+braindf$ELS60 <- as.numeric(braindf$ELS60); braindf$logPAH <- as.numeric(braindf$logPAH)
+
+tmpdf1v <- drop_na(braindf[,c("subID","VAT","age_mri_yr", "GENDER")])
+nrow(tmpdf1v)
+
+r.1v.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + age_mri_yr + GENDER,
+                    data = tmpdf1v,
+                    id = "subID",
+                    hemi = "lh",
+                    project = "test",
+                    dir_tmp = "~/tmp",
+                    dir_out = analysisout,dir_out_tree = TRUE,clobber=TRUE,
+                    fwhm = 10,
+                    dir_subj = SUBJECTS_DIR ,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T)
+
+l.1v.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + age_mri_yr + GENDER,
+                    data = tmpdf1v,
+                    id = "subID",
+                    hemi = "rh",
+                    project = "test",
+                    dir_tmp = "~/tmp",
+                    dir_out = analysisout,dir_out_tree = TRUE,clobber=TRUE,
+                    fwhm = 10,
+                    dir_subj = SUBJECTS_DIR,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T)
+
+tmpdf2v.w <- drop_na(braindf[,c("subID","VAT","ipw", "age_mri_yr", "GENDER")])
+nrow(tmpdf2v.w) #237
+
+r.2v.w.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + age_mri_yr + GENDER,
+                    data = tmpdf2v.w,
+                    weights = tmpdf2v.w$ipw,
+                    id = "subID",
+                    hemi = "lh",
+                    project = "test",
+                    dir_tmp = "~/tmp",
+                    dir_out = analysisout,dir_out_tree = TRUE,clobber=TRUE,
+                    fwhm = 10,
+                    dir_subj = SUBJECTS_DIR ,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T)
+
+l.2v.w.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + age_mri_yr + GENDER,
+                    data = tmpdf2v.w,
+                    weights = tmpdf2v.w$ipw,
+                    id = "subID",
+                    hemi = "rh",
+                    project = "test",
+                    dir_tmp = "~/tmp",
+                    dir_out = analysisout,dir_out_tree = TRUE,clobber=TRUE,
+                    fwhm = 10,
+                    dir_subj = SUBJECTS_DIR,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T)
+
+tmpdf20v <- drop_na(braindf[,c("subID","VAT", "p50_ethnicity", "p50_cohabitate",
+                              "p50_education", "p50_Poor_SRH", "SES12", "SES13",
+                              "p50_Housing", "tfi_score", "A11Y11", "A12Y11", "A13Y11",
+                              "A14Y11", "A15Y11", "A17Y11", "BirthWt", "BMUSCLE", "BSAT",
+                              "BIMA", "age_mri_yr", "GENDER")])
+
+nrow(tmpdf20v) #178
+
+r.20v.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH +
+                                                                  SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 +
+                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER,
+                    data = tmpdf20v,
+                    id = "subID",
+                    hemi = "lh",
+                    project = "test",
+                    dir_tmp = "~/tmp",
+                    dir_out = analysisout,dir_out_tree = TRUE,clobber=TRUE,
+                    fwhm = 10,
+                    dir_subj = SUBJECTS_DIR ,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T)
+
+l.20v.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH +
+                                                                  SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 +
+                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER,
+                    data = tmpdf20v,
+                    id = "subID",
+                    hemi = "rh",
+                    project = "test",
+                    dir_tmp = "~/tmp",
+                    dir_out = analysisout,dir_out_tree = TRUE,clobber=TRUE,
+                    fwhm = 10,
+                    dir_subj = SUBJECTS_DIR,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T)
+
+tmpdf20v.w <- drop_na(braindf[,c("subID","VAT", "p50_ethnicity", "p50_cohabitate",
+                              "p50_education", "p50_Poor_SRH", "SES12", "SES13",
+                              "p50_Housing", "tfi_score", "A11Y11", "A12Y11", "A13Y11",
+                              "A14Y11", "A15Y11", "A17Y11", "BirthWt", "BMUSCLE", "BSAT",
+                              "BIMA", "age_mri_yr", "ipw", "GENDER")])
+
+nrow(tmpdf20v.w) #166
+
+r.20v.w.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH +
+                                                                  SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 +
+                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER,
+                    data = tmpdf20v.w,
+                    weights = tmpdf20v.w$ipw,
+                    id = "subID",
+                    hemi = "lh",
+                    project = "test",
+                    dir_tmp = "~/tmp",
+                    dir_out = analysisout,dir_out_tree = TRUE,clobber=TRUE,
+                    fwhm = 10,
+                    dir_subj = SUBJECTS_DIR ,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T)
+
+l.20v.w.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH +
+                                                                  SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 +
+                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER,
+                    data = tmpdf20v.w,
+                    weights = tmpdf20v.w$ipw,
+                    id = "subID",
+                    hemi = "rh",
+                    project = "test",
+                    dir_tmp = "~/tmp",
+                    dir_out = analysisout,dir_out_tree = TRUE,clobber=TRUE,
+                    fwhm = 10,
+                    dir_subj = SUBJECTS_DIR,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T)
+
+
+## imputation ----
+P50_imputs %>% complete(action = 1) %>% nrow() #300
+
+tmpdf20v.mids <- P50_imputs %>% mice::filter(subID %in% braindf$subID)
+tmpdf20v.mids %>% complete(action = 1) %>% nrow() #286
+
+r.20v.mids.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH +
+                                                                  SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 +
+                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER,
+                    data = tmpdf20v.mids,
+                    id = "subID",
+                    hemi = "lh",
+                    project = "test",
+                    dir_tmp = "~/tmp",
+                    dir_out = analysisout,dir_out_tree = TRUE,clobber=TRUE,
+                    fwhm = 10,
+                    dir_subj = SUBJECTS_DIR ,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T)
+
+l.20v.mids.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH +
+                                                                  SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 +
+                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER,
+                    data = tmpdf20v.mids,
+                    id = "subID",
+                    hemi = "rh",
+                    project = "test",
+                    dir_tmp = "~/tmp",
+                    dir_out = analysisout,dir_out_tree = TRUE,clobber=TRUE,
+                    fwhm = 10,
+                    dir_subj = SUBJECTS_DIR,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T)
+
+summary(r.20v.mids.model, annot = TRUE)
+qdecr_snap(r.20v.mids.model, 'VAT')
+
+#freeview -f ../derivatives/freesurfer/fsaverage/surf/lh.inflated:annot=aparc.annot:annot_outline=1:overlay=lh.test.thickness/stack12.t.mgh:overlay_threshold=2,5 -viewport 3d
+
+```
+
