@@ -34,7 +34,7 @@ library(ggmice)
 ## Setting Drive Location here 
 ```{r}
 ## Leave the one uncommented that you are using! 
-gdrive <- "/Volumes/GoogleDrive/My Drive/EBB Lab Folder/" #minimac
+gdrive <- "/Volumes/GoogleDrive/My Drive/EBB Lab Folder/" #minimac #still need to set up github for lab mac
 #gdrive <- "~/Google Drive/EBB Lab Folder/" #Laptop 
 ```
 
