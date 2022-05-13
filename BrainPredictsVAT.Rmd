@@ -12,7 +12,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r, include = FALSE}
 library(dplyr)
 library(devtools)
-# library(ggplot2)
+library(ggplot2)
 library(mice)
 library(readxl)
 library(VIM)
@@ -294,11 +294,11 @@ md.pattern(P50_fullMRI[2:22], plot = TRUE, rotate.names = TRUE) # Tells us how m
 ```{r}
 # CREATING VECTOR OF VARIABLES TO EXCLUDE FROM IMPUTATION AND PREDICTION
 # Need to modify this becayse gender should actually be included 
-noImput <- c(ANTHRO_names, brain_names, bchart_names, prenat_names, xy_names, CKLIST16_names)
+noImput <- c(ANTHRO_names, brain_names, bchart_names, prenat_names, c("sid", "SIBID", "VAT_check", "Thick_check", "ID", "subID"), CKLIST16_names)
 
 brain_namesnoPred <- brain_names[! brain_names %in% c("rh_MeanThickness_thickness", "lh_MeanThickness_thickness")] #adding mean thickness back in for predictions 
 
-noPred <- c(ANTHRO_names, brain_namesnoPred, bchart_names, prenat_names, xy_names, CKLIST16_names)
+noPred <- c(ANTHRO_names, brain_namesnoPred, bchart_names, prenat_names, c("sid", "SIBID", "VAT_check", "Thick_check", "ID", "subID"), CKLIST16_names)
 
 P50_imput_data <- P50 %>% filter(!is.na(VAT)) #%>% dplyr::select(sid:age_mri_yr)
 
@@ -795,8 +795,8 @@ braindf <- P50[P50$subID %in% brainlist,]
 braindf$file <- str_c(SUBJECTS_DIR,braindf$subID,"/surf/lh.thickness.fwhm10.fsaverage.mgh")
 braindf <- braindf[file.exists(braindf$file),]
 
-braindf[,c("ETS0","newgendr","ethnicityAA","season_winter","F48_60")] <- (braindf[,c("ETS0","newgendr","ethnicityAA","season_winter","F48_60")]* 1) -.5
-braindf$ELS60 <- as.numeric(braindf$ELS60); braindf$logPAH <- as.numeric(braindf$logPAH)
+#braindf[,c("ETS0","newgendr","ethnicityAA","season_winter","F48_60")] <- (braindf[,c("ETS0","newgendr","ethnicityAA","season_winter","F48_60")]* 1) -.5
+#braindf$ELS60 <- as.numeric(braindf$ELS60); braindf$logPAH <- as.numeric(braindf$logPAH)
 
 tmpdf1v <- drop_na(braindf[,c("subID","VAT","age_mri_yr", "GENDER")])
 nrow(tmpdf1v)
@@ -916,7 +916,7 @@ r.20v.w.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity + 
 ## imputation ----
 P50_imputs %>% complete(action = 1) %>% nrow() #300
 
-tmpdf20v.mids <- P50_imputs %>% mice::filter(subID %in% braindf$subID)
+tmpdf20v.mids <- P50_imputs %>% mice::filter(subID %in% braindf$subID) # this applies the check for fsavg.mgh file above on all imputed datasets 
 tmpdf20v.mids %>% complete(action = 1) %>% nrow() #286
 
 l.20v.mids.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH +
@@ -943,7 +943,8 @@ r.20v.mids.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity
                     fwhm = 10,
                     dir_subj = SUBJECTS_DIR,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T)
 
-summary(r.20v.mids.model, annot = TRUE)
+summary(r.20v.model, annot = TRUE)
+freeview(r.20v.mids.model)
 qdecr_snap(r.20v.mids.model, 'VAT')
 
 #freeview -f ../derivatives/freesurfer/fsaverage/surf/lh.inflated:annot=aparc.annot:annot_outline=1:overlay=lh.test.thickness/stack12.t.mgh:overlay_threshold=2,5 -viewport 3d
