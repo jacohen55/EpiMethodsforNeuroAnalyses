@@ -209,7 +209,7 @@ prenat_names <- colnames(prenat)
           
 ## Gender 
 xy <- read_sav(str_c(gdrive,"MN_DATA /GENDER.sav")) %>% 
-            rename(sid = SID)
+            rename(sid = SID) %>% mutate(GENDER = as.factor(GENDER))
 
 xy_names <- colnames(xy)
 nrow(xy)
@@ -416,11 +416,11 @@ P50 <- augment_columns(glm.fit, newdata = P50, type.predict = "response") %>%
                 mutate(ipw = VAT_check/propensity +  (1-VAT_check)/(1-propensity)) %>% 
                 select(sid, VAT_check, propensity, ipw, everything()) 
 
-
-ggplot(P50) + geom_density(aes(propensity, color = as.factor(VAT_check), fill = as.factor(VAT_check)), alpha = 0.75) 
-
-ggplot(P50 %>% filter(!is.na(VAT), !is.na(rh_G_oc.temp_med.Parahip_thickness))) + geom_density(aes(ipw), alpha = 0.75) 
-ggplot(P50) + geom_density(aes(ipw, color = as.factor(VAT_check), fill = as.factor(VAT_check)), alpha = 0.75) 
+# Figures not working when you run as chunk becuase of Google Drive configuration - need to run from command line
+# ggplot(P50) + geom_density(aes(propensity, color = as.factor(VAT_check), fill = as.factor(VAT_check)), alpha = 0.75) 
+# 
+# ggplot(P50 %>% filter(!is.na(VAT), !is.na(rh_G_oc.temp_med.Parahip_thickness))) + geom_density(aes(ipw), alpha = 0.75) 
+# ggplot(P50) + geom_density(aes(ipw, color = as.factor(VAT_check), fill = as.factor(VAT_check)), alpha = 0.75) 
 ```
 
 ## Run a model and pool the results. 
@@ -811,7 +811,7 @@ braindf <- braindf[file.exists(braindf$file),]
 tmpdf1v <- drop_na(braindf[,c("subID","VAT","age_mri_yr", "GENDER")])
 nrow(tmpdf1v)
 
-l.1v.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + age_mri_yr + GENDER,
+l.1v.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + GENDER + age_mri_yr , # VAT*GENDER --> nothing came out 
                     data = tmpdf1v,
                     id = "subID",
                     hemi = "lh",
@@ -821,7 +821,7 @@ l.1v.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + age_mri_yr + GENDER
                     fwhm = 10,
                     dir_subj = SUBJECTS_DIR ,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T)
 
-r.1v.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + age_mri_yr + GENDER,
+r.1v.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + GENDER + age_mri_yr , # VAT*GENDER --> nothing came out
                     data = tmpdf1v,
                     id = "subID",
                     hemi = "rh",
@@ -968,9 +968,9 @@ summary(l.20v.model, annot = TRUE)
 summary(r.20v.mids.model, annot = TRUE)
 summary(l.20v.mids.model, annot = TRUE)
 
-freeview(r.20v.mids.model)
-qdecr_snap(l.20v.w.model, 'VAT')
-
+freeview(l.1v.model, 'VAT')
+qdecr_snap(l.1v.model, 'VAT')
+hist(l.1v.model)
 #freeview -f ../derivatives/freesurfer/fsaverage/surf/lh.inflated:annot=aparc.annot:annot_outline=1:overlay=lh.test.thickness/stack12.t.mgh:overlay_threshold=2,5 -viewport 3d
 
 ```
