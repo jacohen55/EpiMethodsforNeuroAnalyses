@@ -99,14 +99,17 @@ brain %>% filter(sid == 10| sid == 100|sid == 1000|sid == 10000)
 ```{r}
 # Pulling in VAT and covariate data sent over by Rundle 
 Rundle <- read_excel(str_c(gdrive,"Jacob/Obesity_Project/data_code/","P50_reduced_Data_N300_MI_data_03102022_NoImpute.xlsx")) %>% 
-            dplyr::select(-Imputation_) %>% 
-            mutate(p50_ethnicity = as.factor(p50_ethnicity))
-            
+            dplyr::select(-Imputation_) 
+
+Rundle[Rundle == -9] <- NA 
+
+Rundle[,c("p50_ethnicity","p50_cohabitate","p50_Poor_SRH", "p50_Housing", "A11Y11", "A12Y11", "A13Y11", "A14Y11", "A15Y11", "A17Y11")] <- as.data.frame(lapply(Rundle[,c("p50_ethnicity","p50_cohabitate","p50_Poor_SRH", "p50_Housing", "A11Y11", "A12Y11", "A13Y11", "A14Y11", "A15Y11", "A17Y11")], function(x) as.factor(x)))
+
 glimpse(Rundle)
 nrow(Rundle) #300
 
 # Making all no-reponse items the logical NA
-Rundle[Rundle == -9] <- NA 
+
 ```
 
 ## Pulling in Anthro 
