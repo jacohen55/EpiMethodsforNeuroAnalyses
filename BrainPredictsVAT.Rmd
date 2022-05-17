@@ -92,7 +92,7 @@ nrow(brain) # 287
 brain_names <- colnames(brain) # We need this to later subset out from imputation prediction matrix
 length(brain_names)
 
-brain %>% filter(sid == 10| sid == 100|sid == 1000|sid == 10000)
+# brain %>% filter(sid == 10| sid == 100|sid == 1000|sid == 10000)
 ```
 
 ## Pulling in phenotypic data from Rundle
@@ -480,6 +480,9 @@ model5pooled$glanced
 
 modelsummary(list(model1, model2, model3, model4), statistic = 'p.value')
 summary(model1)
+
+model_performance(model3)
+check_collinearity(model3)
 ```
 
 ```{r}
@@ -863,6 +866,7 @@ tmpdf20v <- drop_na(braindf[,c("subID","VAT", "p50_ethnicity", "p50_cohabitate",
                               "BIMA", "age_mri_yr", "GENDER")])
 
 nrow(tmpdf20v) #178
+
 
 l.20v.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH +
                                                                   SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 +
