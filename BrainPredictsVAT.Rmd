@@ -102,6 +102,8 @@ Rundle <- read_excel(str_c(gdrive,"Jacob/Obesity_Project/data_code/","P50_reduce
             dplyr::select(-Imputation_) 
 
 Rundle[Rundle == -9] <- NA 
+Rundle[Rundle == 9] <- NA 
+Rundle[Rundle == 8] <- NA 
 
 Rundle[,c("p50_ethnicity","p50_cohabitate","p50_Poor_SRH", "p50_Housing", "A11Y11", "A12Y11", "A13Y11", "A14Y11", "A15Y11", "A17Y11")] <- as.data.frame(lapply(Rundle[,c("p50_ethnicity","p50_cohabitate","p50_Poor_SRH", "p50_Housing", "A11Y11", "A12Y11", "A13Y11", "A14Y11", "A15Y11", "A17Y11")], function(x) as.factor(x)))
 
@@ -862,15 +864,14 @@ r.2v.w.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + age_mri_yr + GEND
 tmpdf20v <- drop_na(braindf[,c("subID","VAT", "p50_ethnicity", "p50_cohabitate",
                               "p50_education", "p50_Poor_SRH", "SES12", "SES13",
                               "p50_Housing", "tfi_score", "A11Y11", "A12Y11", "A13Y11",
-                              "A14Y11", "A15Y11", "A17Y11", "BirthWt", "BMUSCLE", "BSAT",
-                              "BIMA", "age_mri_yr", "GENDER")])
+                              "A14Y11", "A15Y11", "A17Y11", "BirthWt", "age_mri_yr", "GENDER")]) # removing to help with collinearity "BSAT", "BIMA", , "BMUSCLE"
 
 nrow(tmpdf20v) #178
 
 
 l.20v.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH +
                                                                   SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 +
-                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER,
+                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + age_mri_yr + GENDER, #+ BSAT + BIMA+ BMUSCLE  
                     data = tmpdf20v,
                     id = "subID",
                     hemi = "lh",
