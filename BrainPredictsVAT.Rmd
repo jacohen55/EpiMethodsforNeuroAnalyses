@@ -101,16 +101,15 @@ length(brain_names)
 Rundle <- read_excel(str_c(gdrive,"Jacob/Obesity_Project/data_code/","P50_reduced_Data_N300_MI_data_03102022_NoImpute.xlsx")) %>% 
             dplyr::select(-Imputation_) 
 
-Rundle[Rundle == -9] <- NA 
-Rundle[Rundle == 9] <- NA 
-Rundle[Rundle == 8] <- NA 
+Rundle[,-1][Rundle[,-1] == -9] <- NA 
+Rundle[,-1][Rundle[,-1] == 9] <- NA 
+Rundle[,-1][Rundle[,-1] == 8] <- NA 
 
 Rundle[,c("p50_ethnicity","p50_cohabitate","p50_Poor_SRH", "p50_Housing", "A11Y11", "A12Y11", "A13Y11", "A14Y11", "A15Y11", "A17Y11")] <- as.data.frame(lapply(Rundle[,c("p50_ethnicity","p50_cohabitate","p50_Poor_SRH", "p50_Housing", "A11Y11", "A12Y11", "A13Y11", "A14Y11", "A15Y11", "A17Y11")], function(x) as.factor(x)))
 
 glimpse(Rundle)
 nrow(Rundle) #300
-
-# Making all no-reponse items the logical NA
+sapply(Rundle, levels)
 
 ```
 
@@ -820,53 +819,53 @@ l.1v.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + GENDER + age_mri_yr
                     data = tmpdf1v,
                     id = "subID",
                     hemi = "lh",
-                    project = "test",
+                    project = "1v",
                     dir_tmp = "~/tmp",
                     dir_out = analysisout,dir_out_tree = TRUE,clobber=TRUE,
                     fwhm = 10,
-                    dir_subj = SUBJECTS_DIR ,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T)
+                    dir_subj = SUBJECTS_DIR ,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T, cwp_thr = 0.5)
 
 r.1v.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + GENDER + age_mri_yr , # VAT*GENDER --> nothing came out
                     data = tmpdf1v,
                     id = "subID",
                     hemi = "rh",
-                    project = "test",
+                    project = "1v",
                     dir_tmp = "~/tmp",
                     dir_out = analysisout,dir_out_tree = TRUE,clobber=TRUE,
                     fwhm = 10,
-                    dir_subj = SUBJECTS_DIR,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T)
+                    dir_subj = SUBJECTS_DIR,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T, cwp_thr = 0.5)
 
-tmpdf2v.w <- drop_na(braindf[,c("subID","VAT","ipw", "age_mri_yr", "GENDER")])
-nrow(tmpdf2v.w) #237
-
-l.2v.w.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + age_mri_yr + GENDER,
-                    data = tmpdf2v.w,
-                    weights = tmpdf2v.w$ipw,
-                    id = "subID",
-                    hemi = "lh",
-                    project = "test",
-                    dir_tmp = "~/tmp",
-                    dir_out = analysisout,dir_out_tree = TRUE,clobber=TRUE,
-                    fwhm = 10,
-                    dir_subj = SUBJECTS_DIR ,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T)
-
-r.2v.w.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + age_mri_yr + GENDER,
-                    data = tmpdf2v.w,
-                    weights = tmpdf2v.w$ipw,
-                    id = "subID",
-                    hemi = "rh",
-                    project = "test",
-                    dir_tmp = "~/tmp",
-                    dir_out = analysisout,dir_out_tree = TRUE,clobber=TRUE,
-                    fwhm = 10,
-                    dir_subj = SUBJECTS_DIR,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T)
+# tmpdf2v.w <- drop_na(braindf[,c("subID","VAT","ipw", "age_mri_yr", "GENDER")])
+# nrow(tmpdf2v.w) #237
+# 
+# l.2v.w.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + age_mri_yr + GENDER,
+#                     data = tmpdf2v.w,
+#                     weights = tmpdf2v.w$ipw,
+#                     id = "subID",
+#                     hemi = "lh",
+#                     project = "test",
+#                     dir_tmp = "~/tmp",
+#                     dir_out = analysisout,dir_out_tree = TRUE,clobber=TRUE,
+#                     fwhm = 10,
+#                     dir_subj = SUBJECTS_DIR ,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T)
+# 
+# r.2v.w.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + age_mri_yr + GENDER,
+#                     data = tmpdf2v.w,
+#                     weights = tmpdf2v.w$ipw,
+#                     id = "subID",
+#                     hemi = "rh",
+#                     project = "test",
+#                     dir_tmp = "~/tmp",
+#                     dir_out = analysisout,dir_out_tree = TRUE,clobber=TRUE,
+#                     fwhm = 10,
+#                     dir_subj = SUBJECTS_DIR,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T)
 
 tmpdf20v <- drop_na(braindf[,c("subID","VAT", "p50_ethnicity", "p50_cohabitate",
                               "p50_education", "p50_Poor_SRH", "SES12", "SES13",
                               "p50_Housing", "tfi_score", "A11Y11", "A12Y11", "A13Y11",
                               "A14Y11", "A15Y11", "A17Y11", "BirthWt", "age_mri_yr", "GENDER")]) # removing to help with collinearity "BSAT", "BIMA", , "BMUSCLE"
 
-nrow(tmpdf20v) #178
+nrow(tmpdf20v) #111
 
 
 l.20v.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH +
@@ -875,57 +874,57 @@ l.20v.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity + p5
                     data = tmpdf20v,
                     id = "subID",
                     hemi = "lh",
-                    project = "test",
+                    project = "20v",
                     dir_tmp = "~/tmp",
                     dir_out = analysisout,dir_out_tree = TRUE,clobber=TRUE,
                     fwhm = 10,
-                    dir_subj = SUBJECTS_DIR ,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T)
+                    dir_subj = SUBJECTS_DIR ,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T, cwp_thr = 0.5)
 
 r.20v.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH +
                                                                   SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 +
-                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER,
+                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + age_mri_yr + GENDER,#+ BMUSCLE + BSAT + BIMA 
                     data = tmpdf20v,
                     id = "subID",
                     hemi = "rh",
-                    project = "test",
+                    project = "20v",
                     dir_tmp = "~/tmp",
                     dir_out = analysisout,dir_out_tree = TRUE,clobber=TRUE,
                     fwhm = 10,
-                    dir_subj = SUBJECTS_DIR,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T)
+                    dir_subj = SUBJECTS_DIR,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T, cwp_thr = 0.5)
 
-tmpdf20v.w <- drop_na(braindf[,c("subID","VAT", "p50_ethnicity", "p50_cohabitate",
-                              "p50_education", "p50_Poor_SRH", "SES12", "SES13",
-                              "p50_Housing", "tfi_score", "A11Y11", "A12Y11", "A13Y11",
-                              "A14Y11", "A15Y11", "A17Y11", "BirthWt", "BMUSCLE", "BSAT",
-                              "BIMA", "age_mri_yr", "ipw", "GENDER")])
-
-nrow(tmpdf20v.w) #166
-
-l.20v.w.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH +
-                                                                  SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 +
-                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER,
-                    data = tmpdf20v.w,
-                    weights = tmpdf20v.w$ipw,
-                    id = "subID",
-                    hemi = "lh",
-                    project = "test",
-                    dir_tmp = "~/tmp",
-                    dir_out = analysisout,dir_out_tree = TRUE,clobber=TRUE,
-                    fwhm = 10,
-                    dir_subj = SUBJECTS_DIR ,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T)
-
-r.20v.w.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH +
-                                                                  SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 +
-                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER,
-                    data = tmpdf20v.w,
-                    weights = tmpdf20v.w$ipw,
-                    id = "subID",
-                    hemi = "rh",
-                    project = "test",
-                    dir_tmp = "~/tmp",
-                    dir_out = analysisout,dir_out_tree = TRUE,clobber=TRUE,
-                    fwhm = 10,
-                    dir_subj = SUBJECTS_DIR,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T)
+# tmpdf20v.w <- drop_na(braindf[,c("subID","VAT", "p50_ethnicity", "p50_cohabitate",
+#                               "p50_education", "p50_Poor_SRH", "SES12", "SES13",
+#                               "p50_Housing", "tfi_score", "A11Y11", "A12Y11", "A13Y11",
+#                               "A14Y11", "A15Y11", "A17Y11", "BirthWt", "BMUSCLE", "BSAT",
+#                               "BIMA", "age_mri_yr", "ipw", "GENDER")])
+# 
+# nrow(tmpdf20v.w) #166
+# 
+# l.20v.w.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH +
+#                                                                   SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 +
+#                                                                   A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER,
+#                     data = tmpdf20v.w,
+#                     weights = tmpdf20v.w$ipw,
+#                     id = "subID",
+#                     hemi = "lh",
+#                     project = "test",
+#                     dir_tmp = "~/tmp",
+#                     dir_out = analysisout,dir_out_tree = TRUE,clobber=TRUE,
+#                     fwhm = 10,
+#                     dir_subj = SUBJECTS_DIR ,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T)
+# 
+# r.20v.w.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH +
+#                                                                   SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 +
+#                                                                   A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER,
+#                     data = tmpdf20v.w,
+#                     weights = tmpdf20v.w$ipw,
+#                     id = "subID",
+#                     hemi = "rh",
+#                     project = "test",
+#                     dir_tmp = "~/tmp",
+#                     dir_out = analysisout,dir_out_tree = TRUE,clobber=TRUE,
+#                     fwhm = 10,
+#                     dir_subj = SUBJECTS_DIR,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T)
 
 
 ## imputation ----
@@ -936,36 +935,36 @@ tmpdf20v.mids %>% complete(action = 1) %>% nrow() #286
 
 l.20v.mids.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH +
                                                                   SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 +
-                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER,
+                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt  + age_mri_yr + GENDER, #+ BMUSCLE + BSAT + BIMA
                     data = tmpdf20v.mids,
                     id = "subID",
                     hemi = "lh",
-                    project = "test",
+                    project = "20vMIDS",
                     dir_tmp = "~/tmp",
                     dir_out = analysisout,dir_out_tree = TRUE,clobber=TRUE,
                     fwhm = 10,
-                    dir_subj = SUBJECTS_DIR ,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T)
+                    dir_subj = SUBJECTS_DIR ,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T, cwp_thr = 0.5)
 
 r.20v.mids.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH +
                                                                   SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 +
-                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER,
+                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt  + age_mri_yr + GENDER, #+ BMUSCLE + BSAT + BIMA
                     data = tmpdf20v.mids,
                     id = "subID",
                     hemi = "rh",
-                    project = "test",
+                    project = "20vMIDS",
                     dir_tmp = "~/tmp",
                     dir_out = analysisout,dir_out_tree = TRUE,clobber=TRUE,
                     fwhm = 10,
-                    dir_subj = SUBJECTS_DIR,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T)
+                    dir_subj = SUBJECTS_DIR,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T, cwp_thr = 0.5)
 
 summary(r.1v.model, annot = TRUE)
 summary(l.1v.model, annot = TRUE)
 
-summary(r.2v.w.model, annot = TRUE)
-summary(l.2v.w.model, annot = TRUE)
-
-summary(r.20v.w.model, annot = TRUE)
-summary(r.20v.w.model, annot = TRUE)
+# summary(r.2v.w.model, annot = TRUE)
+# summary(l.2v.w.model, annot = TRUE)
+# 
+# summary(r.20v.w.model, annot = TRUE)
+# summary(r.20v.w.model, annot = TRUE)
 
 summary(r.20v.model, annot = TRUE)
 summary(l.20v.model, annot = TRUE)
@@ -973,9 +972,11 @@ summary(l.20v.model, annot = TRUE)
 summary(r.20v.mids.model, annot = TRUE)
 summary(l.20v.mids.model, annot = TRUE)
 
-freeview(l.1v.model, 'VAT')
-qdecr_snap(l.1v.model, 'VAT')
-hist(l.1v.model)
+
+# qdecr_snap(l.1v.model, 'VAT', ext = "_1v.tiff")
+# qdecr_snap(l.20v.model, 'VAT', ext = "_20v.tiff")
+# qdecr_snap(l.20v.mids.model, 'VAT', ext = "_20vMIDS.tiff")
+
 #freeview -f ../derivatives/freesurfer/fsaverage/surf/lh.inflated:annot=aparc.annot:annot_outline=1:overlay=lh.test.thickness/stack12.t.mgh:overlay_threshold=2,5 -viewport 3d
 
 ```
