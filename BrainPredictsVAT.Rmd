@@ -972,7 +972,7 @@ summary(l.20v.model, annot = TRUE)
 summary(r.20v.mids.model, annot = TRUE)
 summary(l.20v.mids.model, annot = TRUE)
 
-
+# Run from command line. Graphics stuff not running in chunk. 
 # qdecr_snap(l.1v.model, 'VAT', ext = "_1v.tiff")
 # qdecr_snap(l.20v.model, 'VAT', ext = "_20v.tiff")
 # qdecr_snap(l.20v.mids.model, 'VAT', ext = "_20vMIDS.tiff")
