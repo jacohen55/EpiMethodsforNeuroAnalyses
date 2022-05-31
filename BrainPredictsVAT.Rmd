@@ -29,6 +29,7 @@ library(arsenal)
 library(scipub)
 library(ggplot2)
 library(ggmice)
+library(performance)
 ```
 
 ## Setting Drive Location here 
@@ -453,7 +454,7 @@ model2 <- lm(data = P50,
 
 model3 <- lm(data = P50, rh_G_oc.temp_med.Parahip_thickness ~ VAT + p50_ethnicity + p50_cohabitate + p50_education + p50_Poor_SRH + 
                                                                   SES12 + SES13 + p50_Housing + tfi_score + A11Y11 + A12Y11 + A13Y11 + 
-                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + BMUSCLE + BSAT + BIMA + age_mri_yr + GENDER)
+                                                                  A14Y11 + A15Y11 + A17Y11 + BirthWt + age_mri_yr + GENDER) #+ BMUSCLE + BSAT + BIMA +
 
 model4 <- lm(data = P50, 
              weights = ipw, 
@@ -812,10 +813,10 @@ braindf <- braindf[file.exists(braindf$file),]
 #braindf[,c("ETS0","newgendr","ethnicityAA","season_winter","F48_60")] <- (braindf[,c("ETS0","newgendr","ethnicityAA","season_winter","F48_60")]* 1) -.5
 #braindf$ELS60 <- as.numeric(braindf$ELS60); braindf$logPAH <- as.numeric(braindf$logPAH)
 
-tmpdf1v <- drop_na(braindf[,c("subID","VAT","age_mri_yr", "GENDER")])
+tmpdf1v <- drop_na(braindf[,c("subID","BMIZ11","age_mri_yr", "GENDER")])
 nrow(tmpdf1v)
 
-l.1v.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + GENDER + age_mri_yr , # VAT*GENDER --> nothing came out 
+l.1v.model <- qdecr_fastlm(formula = qdecr_thickness ~ BMIZ11 + GENDER + age_mri_yr , # VAT*GENDER --> nothing came out 
                     data = tmpdf1v,
                     id = "subID",
                     hemi = "lh",
@@ -957,19 +958,21 @@ r.20v.mids.model <- qdecr_fastlm(formula = qdecr_thickness ~ VAT + p50_ethnicity
                     fwhm = 10,
                     dir_subj = SUBJECTS_DIR,dir_fshome = FREESURFER_HOME, n_cores = 4,save = T,verbose = T,save_data = T, cwp_thr = 0.5)
 
-summary(r.1v.model, annot = TRUE)
+#summary(r.1v.model, annot = TRUE)
 summary(l.1v.model, annot = TRUE)
+hist(P50$VAT)
+hist(P50$BMUSCLE)
 
-# summary(r.2v.w.model, annot = TRUE)
-# summary(l.2v.w.model, annot = TRUE)
+summary(r.2v.w.model, annot = TRUE)
+summary(l.2v.w.model, annot = TRUE)
 # 
 # summary(r.20v.w.model, annot = TRUE)
 # summary(r.20v.w.model, annot = TRUE)
 
-summary(r.20v.model, annot = TRUE)
+#summary(r.20v.model, annot = TRUE)
 summary(l.20v.model, annot = TRUE)
 
-summary(r.20v.mids.model, annot = TRUE)
+#summary(r.20v.mids.model, annot = TRUE)
 summary(l.20v.mids.model, annot = TRUE)
 
 # Run from command line. Graphics stuff not running in chunk. 
@@ -980,4 +983,30 @@ summary(l.20v.mids.model, annot = TRUE)
 #freeview -f ../derivatives/freesurfer/fsaverage/surf/lh.inflated:annot=aparc.annot:annot_outline=1:overlay=lh.test.thickness/stack12.t.mgh:overlay_threshold=2,5 -viewport 3d
 
 ```
+ 
+```{r}
+vw <- qdecr_load("/Users/jacob/Desktop/QDECR/lh.1v.thickness/") # loads in qdecr object
+vw <- reload(vw) # not sure what this step does but seems to be necessary 
+str(vw$mgh) # contains thickness, rows are vertices, columns are SIDs
+vw$stack # tells us which stack goes with which regressors
+clusters <- qdecr_read_ocn(vw, "BMIZ11")$x #extracts vector with cluster number for each vertex in stack 1
+str(clusters)
+table(clusters)
+c1 <- clusters == 1
+row.mask <- as.logical(c1)
+row.ind = bigstatsr::rows_along(vw$mgh)
+row.ind <- row.ind[row.mask]
+
+fbm_col_mean(vw$mgh, row.mask = c1) # gets mean thickness for each participant in cluster 1 
+vw$input$mgh_ids
+vw$md
+
+clusters_spec <- qdecr_read_ocn(vw, "BMIZ11")
+qdecr_read_coef(vw, "BMIZ11")
+qdecr_read_p(vw, "BMIZ11")
+qdecr_read_t(vw, "BMIZ11")
+qdecr_read_se(vw, "BMIZ11")
+qdecr_read_ocn_mask(vw, "BMIZ11")
+```
+
 
